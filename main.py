@@ -43,7 +43,7 @@ def serve_file(filename):
         return send_file(path, as_attachment=True)
     return "❌ فایل یافت نشد.", 404
 
-@app.route("/" + TOKEN, methods=["POST"])
+@app.route("/8134095691:AAFZNQEvKexhDVcgupYzXdgrJwmSI53S7dQ", methods=["POST"])
 def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "OK", 200
