@@ -1,46 +1,56 @@
+import os
 import telebot
-from flask import Flask, request
+from flask import Flask, request, send_file
 
-# توکن ربات و آیدی کانال VIP شما
 TOKEN = "8134095691:AAFZNQEvKexhDVcgupYzXdgrJwmSI53S7dQ"
-CHANNEL_ID = "@vipdownloadclub"
+CHANNEL_USERNAME = "vipdownloadclub"
+BASE_URL = "https://telegram-vip-bot-gqv5.onrender.com/"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    return 'Bot is running'
+DOWNLOAD_FOLDER = "downloads"
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-@app.route(f"/{TOKEN}", methods=['POST'])
-def receive_update():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
-    return 'OK', 200
-
-# دریافت فایل از کاربر (ویدیو، فایل، صوت)
-@bot.message_handler(content_types=['document', 'video', 'audio'])
-def handle_file(message):
+def is_user_member(user_id):
     try:
-        user_id = message.from_user.id
-        status = bot.get_chat_member(CHANNEL_ID, user_id).status
+        status = bot.get_chat_member("@" + CHANNEL_USERNAME, user_id).status
+        return status in ["member", "administrator", "creator"]
+    except:
+        return False
 
-        if status in ['member', 'administrator', 'creator']:
-            file = message.document or message.video or message.audio
-            file_info = bot.get_file(file.file_id)
-            download_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-            bot.reply_to(message, f"✅ لینک مستقیم دانلود:\n{download_url}")
-        else:
-            bot.reply_to(message, f"⛔️ برای دریافت لینک، ابتدا در کانال عضو شوید:\n{CHANNEL_ID}")
+@bot.message_handler(content_types=["document"])
+def handle_files(message):
+    user_id = message.from_user.id
+    if not is_user_member(user_id):
+        bot.send_message(user_id, f"⛔️ برای استفاده از ربات، عضو کانال شوید:\nhttps://t.me/{CHANNEL_USERNAME}")
+        return
 
-    except Exception as e:
-        bot.reply_to(message, f"❌ خطا:\n{e}")
+    file_info = bot.get_file(message.document.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    file_path = os.path.join(DOWNLOAD_FOLDER, message.document.file_name)
 
-# تست ساده: اگر هیچ کدام از بالا نبود، این فعال می‌شود
-@bot.message_handler(func=lambda message: True)
-def echo_test(message):
-    bot.reply_to(message, "✅ ربات فعاله، ولی منتظر فایل هستم.")
+    with open(file_path, 'wb') as f:
+        f.write(downloaded_file)
+
+    file_url = BASE_URL + "file/" + message.document.file_name
+    bot.send_message(user_id, f"✅ فایل با موفقیت ذخیره شد.\n📥 لینک مستقیم:\n{file_url}")
+
+@app.route("/file/<filename>")
+def serve_file(filename):
+    path = os.path.join(DOWNLOAD_FOLDER, filename)
+    if os.path.exists(path):
+        return send_file(path, as_attachment=True)
+    return "❌ فایل یافت نشد.", 404
+
+@app.route("/" + TOKEN, methods=["POST"])
+def webhook():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "OK", 200
+
+@app.route("/")
+def index():
+    return "✅ Bot is running."
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=10000)
